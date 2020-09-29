@@ -85,9 +85,9 @@ func DefaultConfig() Config {
 			Dsn:    "127.0.0.1:6379",
 		},
 		Etcd: etcd.ConfDataSourceEtcd{
-			Enable:                        false,
-			Secure:                        false,
-			EndPoints:                     []string{"127.0.0.1:2379"},
+			Enable:    false,
+			Secure:    false,
+			EndPoints: []string{"127.0.0.1:2379"},
 		},
 	}
 }

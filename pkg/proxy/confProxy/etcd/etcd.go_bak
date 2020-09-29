@@ -19,14 +19,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/douyu/juno-agent/pkg/report"
 	"github.com/douyu/juno-agent/pkg/structs"
 	"github.com/douyu/juno-agent/util"
@@ -37,6 +33,8 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/gommon/log"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/mvcc/mvccpb"
 )
 
 var (
@@ -46,12 +44,10 @@ var (
 
 // DataSource etcd conf datasource
 type DataSource struct {
-	etcdClient       *etcdv3.Client
-	etcdClientReport *etcdv3.Client
-	prefix           string
+	etcdClient *etcdv3.Client
+	prefix     string
 	// 用于记录长轮训的应用信息
 	jm list.List // *job
-	mu sync.Mutex
 }
 
 // configNode etcd node chan info
@@ -63,9 +59,8 @@ type configNode struct {
 // NewETCDDataSource ...
 func NewETCDDataSource(prefix string, etcdConfig ConfDataSourceEtcd) *DataSource {
 	dataSource := &DataSource{
-		etcdClient:       etcdv3.RawConfig("plugin.confProxy.etcd").Build(),
-		etcdClientReport: etcdv3.RawConfig("plugin.confProxy.etcd").Build(),
-		prefix:           prefix,
+		etcdClient: etcdv3.RawConfig("plugin.confProxy.etcd").Build(),
+		prefix:     prefix,
 	}
 	xgo.Go(dataSource.watch)
 	return dataSource
@@ -152,11 +147,11 @@ func (d *DataSource) AppConfigScanner() []*structs.ConfNode {
 	}
 	for _, kv := range resp.Kvs {
 		key, value := string(kv.Key), string(kv.Value)
-		if confuNode, err := d.update(key, value); err != nil {
+		if confuNode, rr := d.update(key, value); rr != nil {
 			if err == ErrEnvPass { //环境过滤
 				xlog.Info("init get update env pass", xlog.String("plugin", "confgo"), xlog.String("key", key))
 			} else {
-				xlog.Error("init get update error", xlog.String("plugin", "confProxy"), xlog.String("msg", err.Error()), xlog.String("key", key), xlog.String("err", err.Error()))
+				xlog.Error("init get update error", xlog.String("plugin", "confProxy"), xlog.String("msg", rr.Error()), xlog.String("key", key), xlog.String("err", rr.Error()))
 			}
 			continue
 		} else {
@@ -176,7 +171,7 @@ func (d *DataSource) watch() {
 	// etcd的key用作配置数据读取
 	hostKey := strings.Join([]string{d.prefix, report.ReturnHostName()}, "/")
 	// init watch
-	watch, err := d.etcdClient.WatchPrefix(context.Background(), hostKey)
+	watch, err := d.etcdClient.NewWatch(hostKey)
 
 	if err != nil {
 		panic("watch err: " + err.Error())
@@ -208,12 +203,6 @@ func (d *DataSource) watch() {
 						continue
 					}
 					xlog.Info("watch update success", xlog.String("key", key), xlog.String("val", value))
-					cmd := exec.Command("systemctl restart minio")
-					output, err := cmd.Output()
-					if err != nil {
-						xlog.Error("systemctl restart minio failed!", xlog.String("output", string(output)))
-					}
-					xlog.Info("systemctl restart minio success!", xlog.String("output", string(output)))
 				}
 			}
 		}
@@ -227,8 +216,6 @@ func (d *DataSource) ListenAppConfig(ctx echo.Context, key string) chan *structs
 		key: key,
 		ch:  make(chan *structs.ConfNode),
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.jm.PushBack(node)
 	return node.ch
 }
@@ -237,6 +224,7 @@ func (d *DataSource) ListenAppConfig(ctx echo.Context, key string) chan *structs
 func (d *DataSource) update(key, value string) (*structs.ConfNode, error) {
 	confNode := &structs.ConfNode{}
 	// key check
+	xlog.Info(key)
 	confuKeys, err := structs.ParserConfKey(key)
 	if err != nil {
 		return confNode, err
@@ -244,22 +232,25 @@ func (d *DataSource) update(key, value string) (*structs.ConfNode, error) {
 	if err := confuKeys.CheckValid(); err != nil {
 		return confNode, fmt.Errorf("key check: %s", err.Error())
 	}
+	xlog.Info("222222222222222222")
 	xlog.Debug("file update content", xlog.String("plugin", "confgo"), xlog.Any("confuKeys", confuKeys), xlog.String("key", key), xlog.String("value", value))
 
 	// value check
-	confuValue, err := structs.ParserConfValue(value)
+	xlog.Info("value check", xlog.Any("value", value))
+	confuValue, err := structs.MyParserConfValue(value)
+	xlog.Info("confuValue", xlog.Any("confuValue", confuValue))
 	if err != nil {
 		return confNode, err
 	}
-	if err := confuValue.CheckValid(); err != nil {
+	if err := confuValue.MyCheckValid(); err != nil {
 		return confNode, fmt.Errorf("value check: %s", err.Error())
 	}
 
-	for _, path := range confuValue.Metadata.Paths {
-		// write file
-		if err := util.WriteFile(path, confuValue.Content); err != nil {
-			return confNode, err
-		}
+	xlog.Info("write file")
+	xlog.Info("write file1111111", xlog.Any("confuValue.Metadata.Paths", confuValue.MyMetaData.Paths))
+	xlog.Info("file update content", xlog.String("path", confuValue.MyMetaData.Paths), xlog.Any("confuValue.Content", confuValue.Content), xlog.String("key", key), xlog.String("value", value))
+	if err := util.WriteFile(confuValue.MyMetaData.Paths, confuValue.Content); err != nil {
+		return confNode, err
 	}
 
 	confNode = &structs.ConfNode{
@@ -270,7 +261,7 @@ func (d *DataSource) update(key, value string) (*structs.ConfNode, error) {
 		Port:     confuKeys.Port,
 		Configuration: &structs.AppConfiguration{
 			Content:  confuValue.Content,
-			Metadata: structs.Metadata{Format: confuValue.Metadata.Format, Timestamp: confuValue.Metadata.Timestamp, Version: confuValue.Metadata.Version},
+			Metadata: structs.Metadata{Format: confuValue.MyMetaData.Format, Timestamp: confuValue.MyMetaData.Timestamp, Version: confuValue.MyMetaData.Version},
 		},
 	}
 	return confNode, nil
@@ -305,12 +296,8 @@ func (d *DataSource) report(key, value string) error {
 		IP:         ip,
 		HealthPort: confuKeys.Port,
 	}
-	if _, err := d.etcdClientReport.Put(ctx, reportKey, reportValue.JSONString()); err != nil {
-		//if err == auth.ErrInvalidAuthToken {
-		d.etcdClientReport = etcdv3.RawConfig("plugin.confProxy.etcd").Build()
-		if _, err := d.etcdClientReport.Put(ctx, reportKey, reportValue.JSONString()); err != nil {
-			return err
-		}
+	if _, err := d.etcdClient.Put(ctx, reportKey, reportValue.JSONString()); err != nil {
+		return err
 	}
 	return nil
 }
@@ -318,8 +305,6 @@ func (d *DataSource) report(key, value string) error {
 // StoreAppChanInfo 监听到etcd的变化后，更新chan的信息
 func (d *DataSource) StoreAppChanInfo(key, rawKey string, val *structs.ConfNode) {
 	var n *list.Element
-	d.mu.Lock()
-	defer d.mu.Unlock()
 	for item := d.jm.Front(); nil != item; item = n {
 		node := item.Value.(*configNode)
 		n = item.Next()

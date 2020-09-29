@@ -82,7 +82,8 @@ func ParserConfKey(key string) (keyData ConfKey, err error) {
 		EnvName:  arr[4],
 		Rest:     arr[5],
 		FileName: arr[6],
-		Port:     arr[7],
+		// Port:     arr[7],
+		Port: "60814",
 	}
 	return
 }
@@ -99,6 +100,20 @@ type MetaData struct {
 	Version   string   `json:"version"`
 	Format    string   `json:"format"`
 	Paths     []string `json:"paths"`
+}
+
+// ConfValue {"content":"","metadata":{"timestamp":1560354378,"version":"v1","format":"toml"}}
+type MyConfValue struct {
+	Content    string     `json:"content"`
+	MyMetaData MyMetaData `json:"metadata"`
+}
+
+// MetaData ...
+type MyMetaData struct {
+	Timestamp int64  `json:"timestamp"`
+	Version   string `json:"version"`
+	Format    string `json:"format"`
+	Paths     string `json:"path"`
 }
 
 // CheckValid ...
@@ -118,10 +133,37 @@ func (c *ConfValue) CheckValid() error {
 	return nil
 }
 
+// CheckValid ...
+func (c *MyConfValue) MyCheckValid() error {
+	if c.MyMetaData.Timestamp == 0 {
+		return errors.New("timestamp empty")
+	}
+	if c.MyMetaData.Format == "" {
+		return errors.New("format empty")
+	}
+	if c.MyMetaData.Version == "" {
+		return errors.New("version empty")
+	}
+	if c.Content == "" {
+		return errors.New("content empty")
+	}
+	return nil
+}
+
 // ParserConfValue ...
 func ParserConfValue(value string) (valueData ConfValue, err error) {
 	if err = json.Unmarshal([]byte(value), &valueData); err != nil {
 		return
+
+	}
+	return
+}
+
+// ParserConfValue ...
+func MyParserConfValue(value string) (valueData MyConfValue, err error) {
+	if err = json.Unmarshal([]byte(value), &valueData); err != nil {
+		return
+
 	}
 	return
 }

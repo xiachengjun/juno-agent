@@ -81,7 +81,7 @@ func NewEngine() *Engine {
 		eng.startHealCheck,
 		eng.serveGRPC,
 		eng.serveHTTP,
-		eng.startWorker,
+		// eng.startWorker,
 	); err != nil {
 		xlog.Panic("new engine", xlog.Any("err", err))
 	}

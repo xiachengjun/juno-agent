@@ -1,7 +1,7 @@
 [plugin]
     [plugin.regProxy]
         # 注册中心地址
-        endpoints=["10.20.32.154:2379"]
+        endpoints=["127.0.0.1:2379"]
         timeout="3s"
         secure=false
         enable = true
@@ -21,7 +21,7 @@
             secure=false
         [plugin.confProxy.etcd]
             enable=true
-            endpoints=["10.20.32.154:2379"]
+            endpoints=["127.0.0.1:2379"]
     [plugin.supervisor]
         enable = false
         dir = "/etc/supervisor/conf.d"
@@ -34,7 +34,7 @@
     [plugin.report]
         enable = true
         debug = true
-        addr = "http://10.20.32.154:50000/api/v1/resource/node/heartbeat"
+        addr = "http://127.0.0.1:50000/api/v1/resource/node/heartbeat"
         internal = "60s"
         hostName = "JUNO_HOST" # 环境变量的名称，或者命令行参数的名称
         regionCode = "REGION_CODE" # 环境变量的名称，或者命令行参数的名称

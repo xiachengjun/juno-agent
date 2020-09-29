@@ -84,7 +84,6 @@ func (s *Scanner) parse(content []byte) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	program.Environments = section.Key("Environment").ValueWithShadows()
 	// Gets the --config parameter for the execstart directive
 	program.ExecStart = section.Key("ExecStart").Value()
@@ -94,6 +93,7 @@ func (s *Scanner) parse(content []byte) (*Program, error) {
 			params := strings.Split(strings.TrimSpace(val), "=")
 			if len(params) == 2 && (params[0] == "--config" || params[0] == "-config") {
 				program.Config = params[1]
+				xlog.Info(">>>program.Config>>>" + program.Config)
 			}
 		}
 	}
@@ -121,8 +121,8 @@ func (s *Scanner) ListPrograms() (tasks map[string]*ProgramExt, err error) {
 	}
 	tasks = make(map[string]*ProgramExt)
 	for fileName, fileContent := range filesInfo {
-		appName := strings.TrimRight(fileName, ".conf")
-
+		appName := strings.TrimRight(fileName, ".service")
+		xlog.Info(">>>appName>>>" + appName)
 		program, err := s.parse([]byte(fileContent))
 		if err != nil {
 			xlog.Error("systemd.ListPrograms", xlog.String("parse err", err.Error()))
