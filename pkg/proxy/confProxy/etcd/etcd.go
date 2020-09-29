@@ -16,6 +16,7 @@ package etcd
 
 import (
 	"container/list"
+	"encoding/json"
 	"context"
 	"errors"
 	"fmt"
@@ -58,6 +59,18 @@ type DataSource struct {
 type configNode struct {
 	key string
 	ch  chan *structs.ConfNode
+}
+
+type metaData struct {
+	Timestamp int `json:"timestamp"`
+	Version string `json:"version"`
+	Format string `json:"format"`
+	Paths []string `json:"paths"`
+}
+
+type valueInfo struct {
+	Content string `json:"content"`
+	Metadata metaData `json:"metadata"`
 }
 
 // NewETCDDataSource ...
@@ -208,12 +221,21 @@ func (d *DataSource) watch() {
 						continue
 					}
 					xlog.Info("watch update success", xlog.String("key", key), xlog.String("val", value))
-					cmd := exec.Command("systemctl restart minio")
-					output, err := cmd.Output()
-					if err != nil {
-						xlog.Error("systemctl restart minio failed!", xlog.String("output", string(output)))
+					var data_json valueInfo
+					if err := json.Unmarshal([]byte(value), &data_json); err == nil {
+						xlog.Info("parse value to json success", xlog.Any("metadata", data_json.Metadata))
+						server_name := strings.Split(data_json.Metadata.Paths[0], "/")[4]
+						tmp_cmd := fmt.Sprintf("sudo systemctl restart %s", server_name)
+						cmd := exec.Command("/bin/sh", "-c", tmp_cmd)
+						output, err := cmd.Output()
+						if err != nil {
+							xlog.Error("systemctl restart failed", xlog.Any("command", tmp_cmd), xlog.Any("output", output))
+						} else {
+							xlog.Info("systemctl restart success", xlog.Any("command", tmp_cmd), xlog.Any("output", output))
+						}
+					} else {
+						xlog.Error("parse value to json fail", xlog.Any("failed", "failed"))
 					}
-					xlog.Info("systemctl restart minio success!", xlog.String("output", string(output)))
 				}
 			}
 		}
